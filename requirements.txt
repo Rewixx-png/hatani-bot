@@ -1,0 +1,9 @@
+aiogram
+mistralai
+redis
+python-dotenv
+duckduckgo-search
+trafilatura
+beautifulsoup4
+requests
+lxml_html_clean
