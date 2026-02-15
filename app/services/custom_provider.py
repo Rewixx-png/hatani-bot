@@ -28,22 +28,5 @@ class CustomProviderService:
             response.raise_for_status()
             return response.json()
     
-    def parse_response(self, response: dict) -> tuple[str, str]:
-        content = response["choices"][0]["message"]["content"]
-        
-        thinking = ""
-        final_answer = content
-        
-        if "<|im_thought|>" in content:
-            parts = content.split("<|im_thought|>")
-            for part in parts:
-                if "</im_thought|>" in part:
-                    thought_part = part.split("</im_thought|>")[0].strip()
-                    thinking += thought_part + "\n"
-                    remaining = part.split("</im_thought|>")[1].strip()
-                    if remaining:
-                        final_answer = remaining
-                elif "<|im_start|>" in part:
-                    final_answer = part.split("<|im_start|>")[-1].strip()
-        
-        return final_answer.strip(), thinking.strip()
+    def parse_response(self, response: dict) -> str:
+        return response["choices"][0]["message"]["content"].strip()

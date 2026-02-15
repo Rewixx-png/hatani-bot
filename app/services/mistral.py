@@ -79,7 +79,7 @@ class MistralService:
         else:
             return self.local_memory.get(chat_id, [])
 
-    async def get_response(self, chat_id: int) -> tuple[str, str]:
+    async def get_response(self, chat_id: int) -> str:
         history = await self.get_history(chat_id)
         current_time_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         dynamic_instruction = f"Current System Time: {current_time_str}.\n{SYSTEM_INSTRUCTION}"
@@ -94,7 +94,7 @@ class MistralService:
                 response = await self.custom_provider.chat_complete(messages_payload)
                 
                 if not response or not response.get("choices"):
-                    return "Ошибка: Пустой ответ от AI.", ""
+                    return "Ошибка: Пустой ответ от AI."
 
                 bot_content = response["choices"][0]["message"]["content"]
 
@@ -133,15 +133,14 @@ class MistralService:
                     continue
 
                 else:
-                    final_answer, thinking = self.custom_provider.parse_response(response)
-                    await self.add_bot_message(chat_id, final_answer)
-                    return final_answer, thinking
+                    await self.add_bot_message(chat_id, bot_content)
+                    return bot_content
             
             except Exception as e:
                 logging.error(f"Error in agent loop: {e}")
-                return f"Ошибка при обработке запроса: {str(e)}", ""
+                return f"Ошибка при обработке запроса: {str(e)}"
 
-        return "Превышен лимит действий агента (Too many steps).", ""
+        return "Превышен лимит действий агента (Too many steps)."
 
     async def clear_history(self, chat_id: int):
         if await self._ensure_connection():

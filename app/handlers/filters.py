@@ -27,7 +27,7 @@ async def should_reply(message: Message) -> bool:
         
     if chat_id == ALLOWED_GROUP_ID:
         if message.message_thread_id == 1 or message.message_thread_id is None:
-            if random.random() < 0.4:
+            if random.random() < 0.27:
                 return True
 
     return False

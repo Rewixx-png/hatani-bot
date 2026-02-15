@@ -33,12 +33,9 @@ async def handle_photo(message: Message, bot: Bot):
         caption = message.caption or "Что на этом изображении?"
         
         await mistral.add_user_message(message.chat.id, text=caption, image_base64=base64_image)
-        response, thinking = await mistral.get_response(message.chat.id)
+        response = await mistral.get_response(message.chat.id)
         
-        if thinking:
-            thinking_msg = await message.answer(f"💭 *Thinking:*\n{thinking}", parse_mode="Markdown")
-        
-        await send_chunked_message(message, response)
+        await send_chunked_message(message, response, reply_to_message_id=message.message_id)
     except Exception as e:
         await message.answer(f"Ошибка: {str(e)}")
     finally:
@@ -81,12 +78,8 @@ async def handle_video(message: Message, bot: Bot):
             prompt = caption or f"User sent a {content_type} without a thumbnail."
             await mistral.add_user_message(message.chat.id, text=prompt)
 
-        response, thinking = await mistral.get_response(message.chat.id)
-        
-        if thinking:
-            thinking_msg = await message.answer(f"💭 *Thinking:*\n{thinking}", parse_mode="Markdown")
-        
-        await send_chunked_message(message, response)
+        response = await mistral.get_response(message.chat.id)
+        await send_chunked_message(message, response, reply_to_message_id=message.message_id)
 
     except Exception as e:
         logging.error(f"Video handling error: {e}")
@@ -108,11 +101,7 @@ async def handle_text(message: Message):
 
     try:
         await mistral.add_user_message(message.chat.id, text=message.text or "")
-        response, thinking = await mistral.get_response(message.chat.id)
-        
-        if thinking:
-            thinking_msg = await message.answer(f"💭 *Thinking:*\n{thinking}", parse_mode="Markdown")
-        
-        await send_chunked_message(message, response)
+        response = await mistral.get_response(message.chat.id)
+        await send_chunked_message(message, response, reply_to_message_id=message.message_id)
     except Exception as e:
         await message.answer(f"Ошибка: {str(e)}")
