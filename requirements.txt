@@ -7,3 +7,4 @@ trafilatura
 beautifulsoup4
 requests
 lxml_html_clean
+httpx

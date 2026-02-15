@@ -3,14 +3,14 @@ import logging
 import datetime
 import re
 import redis.asyncio as redis
-from mistralai import Mistral
-from app.core.config import MISTRAL_API_KEY, MISTRAL_MODEL, SYSTEM_INSTRUCTION, REDIS_URL
+from app.core.config import CUSTOM_API_KEY, CUSTOM_MODEL, SYSTEM_INSTRUCTION, REDIS_URL
+from app.services.custom_provider import CustomProviderService
 from app.services.search import SearchService
 from app.services.browser import BrowserService
 
 class MistralService:
     def __init__(self):
-        self.client = Mistral(api_key=MISTRAL_API_KEY)
+        self.custom_provider = CustomProviderService()
         self.redis_url = REDIS_URL
         self.ttl = 86400
         self.use_redis = True
@@ -39,7 +39,7 @@ class MistralService:
     async def _get_history_key(self, chat_id: int) -> str:
         return f"hatani:history:{chat_id}"
 
-    async def add_user_message(self, chat_id: int, text: str = None, image_base64: str = None):
+    async def add_user_message(self, chat_id: int, text: str = "", image_base64: str = None):
         if image_base64:
             content = []
             if text:
@@ -79,7 +79,7 @@ class MistralService:
         else:
             return self.local_memory.get(chat_id, [])
 
-    async def get_response(self, chat_id: int) -> str:
+    async def get_response(self, chat_id: int) -> tuple[str, str]:
         history = await self.get_history(chat_id)
         current_time_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         dynamic_instruction = f"Current System Time: {current_time_str}.\n{SYSTEM_INSTRUCTION}"
@@ -91,15 +91,12 @@ class MistralService:
 
         while current_turn < max_turns:
             try:
-                response = await self.client.chat.complete_async(
-                    model=MISTRAL_MODEL,
-                    messages=messages_payload
-                )
+                response = await self.custom_provider.chat_complete(messages_payload)
                 
-                if not response or not response.choices:
-                    return "Ошибка: Пустой ответ от AI."
+                if not response or not response.get("choices"):
+                    return "Ошибка: Пустой ответ от AI.", ""
 
-                bot_content = response.choices[0].message.content.strip()
+                bot_content = response["choices"][0]["message"]["content"]
 
                 match = re.match(r"^[\*`]*(SEARCH|BROWSE)[\*`]*:\s*(.+)$", bot_content, re.IGNORECASE | re.DOTALL)
 
@@ -136,14 +133,15 @@ class MistralService:
                     continue
 
                 else:
-                    await self.add_bot_message(chat_id, bot_content)
-                    return bot_content
+                    final_answer, thinking = self.custom_provider.parse_response(response)
+                    await self.add_bot_message(chat_id, final_answer)
+                    return final_answer, thinking
             
             except Exception as e:
                 logging.error(f"Error in agent loop: {e}")
-                return f"Ошибка при обработке запроса: {str(e)}"
+                return f"Ошибка при обработке запроса: {str(e)}", ""
 
-        return "Превышен лимит действий агента (Too many steps)."
+        return "Превышен лимит действий агента (Too many steps).", ""
 
     async def clear_history(self, chat_id: int):
         if await self._ensure_connection():
