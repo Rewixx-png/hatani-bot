@@ -1,8 +1,9 @@
 import io
 import base64
 import logging
+import random
 from aiogram import Router, F, Bot
-from aiogram.types import Message
+from aiogram.types import Message, ReactionTypeEmoji
 from app.handlers.filters import should_reply
 from app.services.mistral import MistralService
 from app.utils.text import send_chunked_message
@@ -10,8 +11,19 @@ from app.utils.text import send_chunked_message
 router = Router()
 mistral = MistralService()
 
+async def try_react_clown(message: Message):
+    try:
+        if random.random() < 0.35:
+            await message.react([ReactionTypeEmoji(emoji="🤡")])
+    except Exception:
+        pass
+
 @router.message(F.photo)
 async def handle_photo(message: Message, bot: Bot):
+    return
+    
+    await try_react_clown(message)
+    
     is_reply = False
     if message.reply_to_message and message.reply_to_message.from_user.id == bot.id:
         is_reply = True
@@ -21,7 +33,7 @@ async def handle_photo(message: Message, bot: Bot):
         await mistral.add_user_message(message.chat.id, text=message.caption or "", image_base64=None)
         return
 
-    wait_msg = await message.answer("Анализирую фото...")
+    wait_msg = await message.answer("Ща гляну че ты там высрал...")
     
     try:
         photo = message.photo[-1]
@@ -30,19 +42,23 @@ async def handle_photo(message: Message, bot: Bot):
         image_bytes = file_io.getvalue()
         base64_image = base64.b64encode(image_bytes).decode('utf-8')
         
-        caption = message.caption or "Что на этом изображении?"
+        caption = message.caption or "Обосри это изображение максимально жестоко."
         
         await mistral.add_user_message(message.chat.id, text=caption, image_base64=base64_image)
         response = await mistral.get_response(message.chat.id)
         
         await send_chunked_message(message, response, reply_to_message_id=message.message_id)
     except Exception as e:
-        await message.answer(f"Ошибка: {str(e)}")
+        await message.answer(f"Слышь, у меня глаз выпал от твоей хуйни: {str(e)}")
     finally:
         await wait_msg.delete()
 
 @router.message(F.video | F.animation)
 async def handle_video(message: Message, bot: Bot):
+    return
+    
+    await try_react_clown(message)
+
     is_reply = False
     if message.reply_to_message and message.reply_to_message.from_user.id == bot.id:
         is_reply = True
@@ -57,7 +73,7 @@ async def handle_video(message: Message, bot: Bot):
         await mistral.add_user_message(message.chat.id, text=user_text)
         return
 
-    wait_msg = await message.answer(f"Смотрю {content_type.lower()}...")
+    wait_msg = await message.answer(f"Пырюсь в твое {content_type.lower()}...")
 
     try:
         thumb = None
@@ -72,7 +88,7 @@ async def handle_video(message: Message, bot: Bot):
             image_bytes = file_io.getvalue()
             base64_image = base64.b64encode(image_bytes).decode('utf-8')
             
-            prompt = caption or f"Проанализируй этот кадр из {content_type.lower()}."
+            prompt = caption or f"Унизь автора этого {content_type.lower()}."
             await mistral.add_user_message(message.chat.id, text=prompt, image_base64=base64_image)
         else:
             prompt = caption or f"User sent a {content_type} without a thumbnail."
@@ -83,12 +99,14 @@ async def handle_video(message: Message, bot: Bot):
 
     except Exception as e:
         logging.error(f"Video handling error: {e}")
-        await message.answer(f"Ошибка при обработке видео: {str(e)}")
+        await message.answer(f"Ты даже видео нормально скинуть не можешь, уебан: {str(e)}")
     finally:
         await wait_msg.delete()
 
 @router.message(F.text)
 async def handle_text(message: Message):
+    await try_react_clown(message)
+
     is_reply = False
     if message.reply_to_message and message.reply_to_message.from_user.id == message.bot.id:
         is_reply = True
@@ -104,4 +122,4 @@ async def handle_text(message: Message):
         response = await mistral.get_response(message.chat.id)
         await send_chunked_message(message, response, reply_to_message_id=message.message_id)
     except Exception as e:
-        await message.answer(f"Ошибка: {str(e)}")
+        await message.answer(f"Я сломался от твоей тупости: {str(e)}")
