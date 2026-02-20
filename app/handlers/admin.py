@@ -9,4 +9,5 @@ mistral = MistralService()
 @router.message(Command("clear"))
 async def cmd_clear(message: Message):
     await mistral.clear_history(message.chat.id)
-    await message.answer("Память очищена.", parse_mode="Markdown")
+    # Используем жесткий ответ, чтобы соответствовать стилю, но подтвердить действие
+    await message.answer("🗑 Память форматирована. Я забыл всё, что ты тут высрал.", parse_mode="Markdown")

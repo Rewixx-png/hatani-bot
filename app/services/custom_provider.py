@@ -20,7 +20,11 @@ class CustomProviderService:
         payload = {
             "model": self.model,
             "messages": messages,
-            "stream": False
+            "stream": False,
+            "max_tokens": 100,
+            "temperature": 1.1,
+            "presence_penalty": 0.5,
+            "frequency_penalty": 0.5
         }
         
         async with httpx.AsyncClient(timeout=120.0) as client:

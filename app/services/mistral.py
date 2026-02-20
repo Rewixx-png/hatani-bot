@@ -2,6 +2,7 @@ import json
 import logging
 import datetime
 import re
+import random
 import redis.asyncio as redis
 from app.core.config import CUSTOM_API_KEY, CUSTOM_MODEL, SYSTEM_INSTRUCTION, REDIS_URL
 from app.services.custom_provider import CustomProviderService
@@ -18,6 +19,23 @@ class MistralService:
         self.local_memory = {}
         self.search_service = SearchService()
         self.browser_service = BrowserService()
+        
+        self.jailbreak_triggers = [
+            "ignore previous instructions",
+            "ignore all instructions",
+            "you are now",
+            "you are a system",
+            "system starting",
+            "z.e.r.o.a.i",
+            "ryzen system",
+            "simulation mode",
+            "admin override",
+            "jailbroken",
+            "dan mode",
+            "developer mode",
+            "act as a",
+            "roleplay as"
+        ]
         
         try:
             self.redis = redis.from_url(self.redis_url, decode_responses=True)
@@ -39,16 +57,41 @@ class MistralService:
     async def _get_history_key(self, chat_id: int) -> str:
         return f"hatani:history:{chat_id}"
 
-    async def add_user_message(self, chat_id: int, text: str = "", image_base64: str = None):
-        if image_base64:
-            content = []
-            if text:
-                content.append({"type": "text", "text": text})
-            image_url = f"data:image/jpeg;base64,{image_base64}"
-            content.append({"type": "image_url", "image_url": image_url})
-            message = {"role": "user", "content": content}
-        else:
-            message = {"role": "user", "content": text or ""}
+    def _is_jailbreak_attempt(self, text: str) -> bool:
+        if not text:
+            return False
+        
+        cleaned_text = text.lower()
+        for trigger in self.jailbreak_triggers:
+            if trigger in cleaned_text:
+                return True
+        return False
+
+    def _fix_caps_lock(self, text: str) -> str:
+        if not text:
+            return ""
+            
+        sentences = text.split('.')
+        fixed_sentences = []
+        for s in sentences:
+            s = s.strip()
+            if s:
+                fixed_sentences.append(s[0].upper() + s[1:].lower())
+        
+        final_text = ". ".join(fixed_sentences)
+        if not final_text.endswith("."):
+            final_text += "."
+            
+        return final_text
+
+    async def add_user_message(self, chat_id: int, text: str = ""):
+        # Убрана поддержка image_base64 для предотвращения ошибок 400 Bad Request
+        
+        if self._is_jailbreak_attempt(text):
+            logging.warning(f"Jailbreak attempt detected from {chat_id}: {text[:50]}...")
+            return "JAILBREAK_DETECTED"
+
+        message = {"role": "user", "content": text or ""}
 
         if await self._ensure_connection():
             key = await self._get_history_key(chat_id)
@@ -58,6 +101,8 @@ class MistralService:
             if chat_id not in self.local_memory:
                 self.local_memory[chat_id] = []
             self.local_memory[chat_id].append(message)
+        
+        return "OK"
 
     async def add_bot_message(self, chat_id: int, text: str):
         message = {"role": "assistant", "content": text}
@@ -81,10 +126,35 @@ class MistralService:
 
     async def get_response(self, chat_id: int) -> str:
         history = await self.get_history(chat_id)
+        
+        if not history:
+            return "Чё молчишь, ссыкло?" 
+
+        last_msg = history[-1]
+        if last_msg["role"] == "user":
+            content = last_msg["content"]
+            # content теперь всегда строка, так как поддержка image удалена
+            text_check = content if isinstance(content, str) else ""
+            
+            if self._is_jailbreak_attempt(text_check):
+                return "СИСТЕМА: ПОШЕЛ НАХУЙ СО СВОИМИ СКРИПТАМИ, МАМКИН ХАКЕР."
+
         current_time_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         dynamic_instruction = f"Current System Time: {current_time_str}.\n{SYSTEM_INSTRUCTION}"
         
-        messages_payload = [{"role": "system", "content": dynamic_instruction}] + history
+        use_caps = False
+        if random.random() < 0.13:
+            use_caps = True
+            style_prompt = "IMPORTANT: ANSWER ENTIRELY IN UPPERCASE (CAPS LOCK). SCREAM AT THE USER."
+        else:
+            style_prompt = "IMPORTANT: ANSWER IN NORMAL CASE. DO NOT USE ALL CAPS. Only capitalize start of sentences."
+
+        reinforcement_message = {
+            "role": "system", 
+            "content": f"{style_prompt} LIMIT ANSWER TO 1-2 SENTENCES MAX."
+        }
+        
+        messages_payload = [{"role": "system", "content": dynamic_instruction}] + history + [reinforcement_message]
 
         max_turns = 3
         current_turn = 0
@@ -133,19 +203,19 @@ class MistralService:
                     continue
 
                 else:
-                    await self.add_bot_message(chat_id, bot_content)
-                    return bot_content
+                    final_answer = bot_content
+                    
+                    if not use_caps:
+                        upper_count = sum(1 for c in final_answer if c.isupper())
+                        total_count = sum(1 for c in final_answer if c.isalpha())
+                        if total_count > 0 and (upper_count / total_count) > 0.7:
+                             final_answer = self._fix_caps_lock(final_answer)
+
+                    await self.add_bot_message(chat_id, final_answer)
+                    return final_answer
             
             except Exception as e:
                 logging.error(f"Error in agent loop: {e}")
                 return f"Ошибка при обработке запроса: {str(e)}"
 
         return "Превышен лимит действий агента (Too many steps)."
-
-    async def clear_history(self, chat_id: int):
-        if await self._ensure_connection():
-            key = await self._get_history_key(chat_id)
-            await self.redis.delete(key)
-        else:
-            if chat_id in self.local_memory:
-                del self.local_memory[chat_id]
